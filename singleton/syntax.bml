@@ -42,10 +42,29 @@ module Var :> {
   include Ord.OPS where type t := t
 
   val show : t -> string
-} = {
-  include String
 
-  val show v = v
+  val fresh : string -> t
+} = {
+  include Ord.Make {
+    type t = int * string
+
+    val compare (m, _) (n, _) = Int.compare m n
+  }
+
+  val show (n, s) =
+    open Pretty in
+    s <> brack (Int.show n)
+
+  module R = Ref.Make {type t = int}
+
+  val counter = R.make 0
+
+  val fresh s =
+    let
+      val n = R.get counter
+      val _ : unit = R.set counter $ n + 1
+    in
+      (n, s)
 }
 
 type var = Var.t
