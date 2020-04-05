@@ -1,0 +1,25 @@
+include {
+  open Singleton.Syntax
+
+  module Base = Base
+  type base = base
+
+  module Index = Index
+  type index = index
+
+  module Var = Var
+  type var = var
+}
+
+datatype kind =
+  | T
+  | Fun of kind * kind
+  | Prod of kind * kind
+
+and ty =
+  | Base of base
+  | Var of var
+  | Abs of var * ty * ty
+  | App of ty * ty
+  | Pair of ty * ty
+  | Proj of index * ty
