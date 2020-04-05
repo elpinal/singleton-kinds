@@ -36,7 +36,17 @@ module Index :> {
 
 type index = Index.t
 
-module Var = String
+module Var :> {
+  type t
+
+  include Ord.OPS where type t := t
+
+  val show : t -> string
+} = {
+  include String
+
+  val show v = v
+}
 
 type var = Var.t
 
