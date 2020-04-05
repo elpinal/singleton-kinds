@@ -1,0 +1,55 @@
+module Base :> {
+  datatype t =
+    | Int
+    | Bool
+
+  val show : t -> string
+} = {
+  datatype t =
+    | Int
+    | Bool
+
+  val show = function
+    | Int  -> "int"
+    | Bool -> "bool"
+  end
+}
+
+type base = Base.t
+
+module Index :> {
+  datatype t =
+    | Fst
+    | Snd
+
+  val show : t -> string
+} = {
+  datatype t =
+    | Fst
+    | Snd
+
+  val show = function
+    | Fst -> "1"
+    | Snd -> "2"
+  end
+}
+
+type index = Index.t
+
+module Var = String
+
+type var = Var.t
+
+datatype kind =
+  | T
+  | S of ty
+  | DepProd of var * kind * kind
+  | DepSum of var * kind * kind
+
+and ty =
+  | Base of base
+  | Var of var
+  | Abs of var * ty * ty
+  | App of ty * ty
+  | Pair of ty * ty
+  | Proj of index * ty
