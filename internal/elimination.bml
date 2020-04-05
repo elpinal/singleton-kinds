@@ -1,0 +1,14 @@
+include {
+  module SS = Singleton.Syntax
+  open Syntax
+
+  val rec erase k =
+    match k with
+      | SS.T                  -> T
+      | SS.S _                -> T
+      | SS.DepProd(_, k1, k2) -> Fun(erase k1, erase k2)
+      | SS.DepSum(_, k1, k2)  -> Prod(erase k1, erase k2)
+    end
+} : {
+  val erase : Singleton.Syntax.kind -> Syntax.kind
+}
