@@ -1,0 +1,48 @@
+module ErrorType = {
+  datatype t =
+    | Env
+
+  val show = function
+    | Env -> "env error"
+  end
+}
+
+module Errors :> {
+  type t
+
+  val show : t -> string
+  val get_type : t -> ErrorType.t
+
+  module F (X : {
+    type error
+    val show_error : error -> string
+    val error_type : ErrorType.t
+  }) : {
+    val lift           : X.error -> t
+    val lift_result 'a : result X.error 'a -> result t 'a
+  }
+} = {
+  signature S = {
+    val f : unit -> string
+  }
+
+  type t = pack S * ErrorType.t
+
+  val show (p, et) =
+    let val s = (unpack p : S).f () in
+    open Pretty in
+    ErrorType.show et <> ":" <+> s
+
+  val get_type (_, et) = et
+
+  module F (X : {
+    type error
+
+    val show_error : error -> string
+    val error_type : ErrorType.t
+  }) = {
+    val lift e = (pack {val f _ = X.show_error e} : S, X.error_type)
+
+    val lift_result = Result.map_err lift
+  }
+}

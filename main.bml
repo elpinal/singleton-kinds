@@ -1,1 +1,2 @@
+submodule "errors"
 submodule Singleton = "singleton"
