@@ -82,3 +82,14 @@ and ty =
   | App of ty * ty
   | Pair of ty * ty
   | Proj of index * ty
+
+include {
+  val rec labeled_singleton ty = function
+    | T                  -> S ty
+    | S _                -> S ty
+    | DepProd(v, k1, k2) -> DepProd(v, k1, labeled_singleton (App(ty, Var v)) k2)
+    | DepSum(v, k1, k2)  -> open Index in DepSum(v, labeled_singleton (Proj(Fst, ty)) k1, labeled_singleton (Proj(Snd, ty)) k2)
+  end
+} : {
+  val labeled_singleton : ty -> kind -> kind
+}
