@@ -1,0 +1,48 @@
+module OptionT (X : Monad.S) :> {
+  type t 'a
+
+  val lift 'a : X.t 'a -> t 'a
+
+  val run 'a : t 'a -> X.t (option 'a)
+
+  include Monad.OPS where type t := t
+  include Alternative.S where type t := t
+} = {
+  type t 'a = X.t (option 'a)
+
+  include Monad.Make {
+    type t = t
+
+    val map f = X.map $ Option.map f
+
+    val return x = X.return $ Some x
+
+    val apply 'a 'b (f : t ('a -> 'b)) (x : t 'a) =
+      X.bind f $ function
+        | None   -> X.return None
+        | Some g ->
+            X.bind x $ function
+              | None   -> X.return None
+              | Some y -> return $ g y
+            end
+      end
+
+    val bind m f =
+      X.bind m $ function
+        | None   -> X.return None
+        | Some x -> f x
+      end
+  }
+
+  val lift = X.map Some
+
+  val run x = x
+
+  val empty = X.return None
+
+  val `<>` x y =
+    X.bind x $ function
+      | None   -> y
+      | Some _ -> x
+    end
+}

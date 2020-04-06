@@ -1,0 +1,273 @@
+open Syntax
+
+type path = ty
+
+module OptionResult = OptionT (Result.Monad {type e = Errors.t})
+
+signature S = {
+  val subst_kind : var -> ty -> kind -> kind
+  val subst_type : var -> ty -> ty -> ty
+
+  val get_natural_kind : env -> path -> OptionResult.t kind
+  val normalize        : env -> ty -> result Errors.t ty
+
+  val equiv_kind : env -> kind -> kind -> result Errors.t unit
+  val equiv_type : env -> ty -> ty -> kind -> result Errors.t unit
+  val equiv_path : env -> path -> path -> result Errors.t kind
+
+  val is_valid_kind   : env -> kind -> result Errors.t unit
+  val is_subkind_of   : env -> kind -> kind -> result Errors.t unit
+  val synthesize_kind : env -> ty -> result Errors.t kind // Returns a principal kind.
+  val kind_check      : env -> ty -> kind -> result Errors.t unit
+}
+
+datatype error =
+  | KindMismatch of kind * kind
+  | TypeMismatch of ty * ty
+  | PathMismatch of path * path
+  | NotBaseKind  of kind
+  | NotDepSum    of kind
+  | NotDepProd   of kind
+  | BaseMismatch of base * base
+  | VarMismatch  of var * var
+  | NotSubkind   of kind * kind
+
+module E = Errors.F {
+  type error = error
+
+  val error_type = ErrorType.Singleton
+
+  val show_error = open Pretty in function
+    | KindMismatch(k1, k2)   -> "kind mismatch"
+    | TypeMismatch(ty1, ty2) -> "type mismatch"
+    | PathMismatch(p1, p2)   -> "path mismatch"
+    | NotBaseKind k          -> "not base kind"
+    | NotDepSum k            -> "not dependent sum kind"
+    | NotDepProd k           -> "not dependent product kind"
+    | BaseMismatch(b1, b2)   -> "base mismatch:" <+> Base.show b1 <+> "vs" <+> Base.show b2
+    | VarMismatch(v1, v2)    -> "variable mismatch:" <+> Var.show v1 <+> "vs" <+> Var.show v2
+    | NotSubkind(k1, k2)     -> "not subkind"
+  end
+}
+
+module Res = Result.Monad {type e = Errors.t}
+
+include {
+  val rec subst_kind v0 by =
+    let val loop = subst_kind v0 by in
+    function
+      | T                  -> T
+      | S ty               -> S $ subst_type v0 by ty
+      | DepProd(v, k1, k2) -> DepProd(v, loop k1, if Var.`==` v v0 then k2 else loop k2)
+      | DepSum(v, k1, k2)  -> DepSum(v, loop k1, if Var.`==` v v0 then k2 else loop k2)
+    end
+
+  and subst_type v0 by =
+    let val loop = subst_type v0 by in
+    function
+      | Base b -> Base b
+      | Var v  ->
+          if Var.`==` v v0
+          then by
+          else Var v
+      | Abs(v, k, ty)  -> Abs(v, subst_kind v0 by k, if Var.`==` v v0 then ty else loop ty)
+      | App(ty1, ty2)  -> App(loop ty1, loop ty2)
+      | Pair(ty1, ty2) -> Pair(loop ty1, loop ty2)
+      | Proj(i, ty)    -> Proj(i, loop ty)
+    end
+
+  val `val+` = Res.`val+`
+
+  open {
+    val fst_of_dep_sum = function
+      | DepSum(_, k1, _) -> Ok k1
+      | k                -> Err $ E.lift $ NotDepSum k
+    end
+
+    val snd_of_dep_sum ty = function
+      | DepSum(v, _, k2) -> Ok $ subst_kind v (Proj(Index.Fst, ty)) k2
+      | k                -> Err $ E.lift $ NotDepSum k
+    end
+
+    val get_dep_prod = function
+      | DepProd x -> Ok x
+      | k         -> Err $ E.lift $ NotDepProd k
+    end
+  } : {
+    val fst_of_dep_sum : kind -> result Errors.t kind
+    val snd_of_dep_sum : ty -> kind -> result Errors.t kind
+    val get_dep_prod   : kind -> result Errors.t (var * kind * kind)
+  }
+
+  val rec get_natural_kind env = open OptionResult in function
+    | Base _     -> return T
+    | Var v      -> lift $ Env.lookup env v
+    | Proj(i, p) ->
+        open Index in
+        match i with
+          | Fst ->
+              val+ k = get_natural_kind env p in
+              lift $ fst_of_dep_sum k
+          | Snd ->
+              val+ k = get_natural_kind env p in
+              lift $ snd_of_dep_sum p k
+        end
+    | App(p, ty) ->
+        val+ k = get_natural_kind env p in
+        val+ (v, _, k2) = lift $ get_dep_prod k in
+        return $ subst_kind v ty k2
+    | _ -> empty // Indicating that the given type is not a path.
+  end
+
+  val rec normalize env = function
+    | App(x, y)  -> normalize_app env (normalize env x) y
+    | Proj(i, x) -> normalize_proj env i $ normalize env x
+    | ty         ->
+        match OptionResult.run $ get_natural_kind env ty with
+          | Ok (Some (S ty1)) -> normalize env ty1
+          | Ok _              -> Ok ty
+          | Err e             -> Err e
+        end
+  end
+
+  and normalize_app env x y =
+    match x with
+      | Abs(v, _, x') -> normalize env $ subst_type v y x'
+      | _             -> Ok $ App(x, y)
+    end
+
+  and normalize_proj env i = function
+    | Pair(x, y) -> normalize env $
+        match i with
+          | Index.Fst -> x
+          | Index.Snd -> y
+        end
+    | x -> Ok $ Proj(i, x)
+  end
+
+  val rec equiv_kind env k1 k2 =
+    match (k1, k2) with
+      | (T, T)                                         -> Ok ()
+      | (S ty1, S ty2)                                 -> equiv_type env ty1 ty2 T
+      | (DepProd(v1, k11, k12), DepProd(v2, k21, k22)) ->
+          val+ _ = equiv_kind env k11 k21 in
+          let
+            val v = Var.fresh "?dep-prod"
+            val x = subst_kind v1 (Var v) k12
+            val y = subst_kind v2 (Var v) k22
+          in
+          equiv_kind (Env.insert env v k11) x y
+      | (DepSum(v1, k11, k12), DepSum(v2, k21, k22)) ->
+          val+ _ = equiv_kind env k11 k21 in
+          let
+            val v = Var.fresh "?dep-sum"
+            val x = subst_kind v1 (Var v) k12
+            val y = subst_kind v2 (Var v) k22
+          in
+          equiv_kind (Env.insert env v k11) x y
+      | _ -> Err $ E.lift $ KindMismatch(k1, k2)
+    end
+
+  and equiv_type env ty1 ty2 k0 =
+    match k0 with
+      | S _ -> Ok ()
+      | T   ->
+          val+ p1 = normalize env ty1 in
+          val+ p2 = normalize env ty2 in
+          val+ k = equiv_path env p1 p2 in
+          match k with
+            | T -> Ok ()
+            | _ -> Err $ E.lift $ NotBaseKind k
+          end
+      | DepProd(v, k1, k2) ->
+          equiv_type (Env.insert env v k1) (App(ty1, Var v)) (App(ty2, Var v)) k2
+      | DepSum(v, k1, k2) ->
+          open Index in
+          val+ _ = equiv_type env (Proj(Fst, ty1)) (Proj(Fst, ty2)) k1 in
+          equiv_type env (Proj(Snd, ty1)) (Proj(Snd, ty2)) $ subst_kind v (Proj(Fst, ty1)) k2
+    end
+
+  and equiv_path env p1 p2 =
+    open Index in
+    match (p1, p2) with
+      | (Base b1, Base b2) ->
+          if Base.`==` b1 b2
+          then Ok T
+          else Err $ E.lift $ BaseMismatch(b1, b2)
+      | (Var v1, Var v2) ->
+          if Var.`==` v1 v2
+          then Env.lookup env v1
+          else Err $ E.lift $ VarMismatch(v1, v2)
+      | (Proj(Fst, p1), Proj(Fst, p2)) -> Res.bind (equiv_path env p1 p2) fst_of_dep_sum
+      | (Proj(Snd, p1), Proj(Snd, p2)) -> Res.bind (equiv_path env p1 p2) $ snd_of_dep_sum p1
+      | (App(p1, x), App(p2, y))       ->
+          val+ k = equiv_path env p1 p2 in
+          val+ (v, k1, k2) = get_dep_prod k in
+          val+ _ : unit = equiv_type env x y k1 in
+          Ok $ subst_kind v x k2
+      | _ -> Err $ E.lift $ PathMismatch(p1, p2)
+    end
+
+  val rec is_subkind_of env k1 k2 =
+    match (k1, k2) with
+      | (T, T)         -> Ok ()
+      | (S _, T)       -> Ok ()
+      | (S ty1, S ty2) -> equiv_type env ty1 ty2 T
+      | (DepProd(v1, k11, k12), DepProd(v2, k21, k22)) ->
+          val+ _ : unit = is_subkind_of env k21 k11 in // Contravariant.
+          let
+            val v = Var.fresh "?dep-prod"
+            val x = subst_kind v1 (Var v) k12
+            val y = subst_kind v2 (Var v) k22
+          in
+          is_subkind_of (Env.insert env v k21) x y
+      | (DepSum(v1, k11, k12), DepSum(v2, k21, k22)) ->
+          val+ _ : unit = is_subkind_of env k11 k21 in // Covariant.
+          let
+            val v = Var.fresh "?dep-sum"
+            val x = subst_kind v1 (Var v) k12
+            val y = subst_kind v2 (Var v) k22
+          in
+          is_subkind_of (Env.insert env v k11) x y
+      | _ -> Err $ E.lift $ NotSubkind(k1, k2)
+    end
+
+  val rec is_valid_kind env = function
+    | T                  -> Ok ()
+    | S ty               -> kind_check env ty T
+    | DepProd(v, k1, k2) ->
+        val+ _ : unit = is_valid_kind env k1 in
+        is_valid_kind (Env.insert env v k1) k2
+    | DepSum(v, k1, k2) ->
+        val+ _ : unit = is_valid_kind env k1 in
+        is_valid_kind (Env.insert env v k1) k2
+  end
+
+  and synthesize_kind env = function
+    | Base b        -> Ok $ S $ Base b
+    | Var v         -> Result.map (labeled_singleton $ Var v) $ Env.lookup env v
+    | Abs(v, k, ty) ->
+        val+ _ : unit = is_valid_kind env k in
+        synthesize_kind (Env.insert env v k) ty
+    | App(ty1, ty2) ->
+        val+ k = synthesize_kind env ty1 in
+        val+ (v, k1, k2) = get_dep_prod k in
+        val+ _ : unit = kind_check env ty2 k1 in
+        Ok $ subst_kind v ty2 k2
+    | Pair(ty1, ty2) ->
+        val+ k1 = synthesize_kind env ty1 in
+        val+ k2 = synthesize_kind env ty2 in
+        Ok $ product k1 k2
+    | Proj(i, ty) ->
+        open Index in
+        val+ k = synthesize_kind env ty in
+        match i with
+          | Fst -> fst_of_dep_sum k
+          | Snd -> snd_of_dep_sum ty k
+        end
+  end
+
+  and kind_check env ty k2 =
+    val+ k1 = synthesize_kind env ty in
+    is_subkind_of env k1 k2
+} : S

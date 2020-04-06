@@ -4,6 +4,8 @@ module Base :> {
     | Bool
 
   val show : t -> string
+
+  include Eq.S where type t := t
 } = {
   datatype t =
     | Int
@@ -13,6 +15,15 @@ module Base :> {
     | Int  -> "int"
     | Bool -> "bool"
   end
+
+  val `==` x y =
+    match (x, y) with
+      | (Int, Int)   -> true
+      | (Bool, Bool) -> true
+      | _            -> false
+    end
+
+  val `/=` x y = Bool.not $ x == y
 }
 
 type base = Base.t
@@ -78,7 +89,7 @@ datatype kind =
 and ty =
   | Base of base
   | Var of var
-  | Abs of var * ty * ty
+  | Abs of var * kind * ty
   | App of ty * ty
   | Pair of ty * ty
   | Proj of index * ty
@@ -90,6 +101,12 @@ include {
     | DepProd(v, k1, k2) -> DepProd(v, k1, labeled_singleton (App(ty, Var v)) k2)
     | DepSum(v, k1, k2)  -> open Index in DepSum(v, labeled_singleton (Proj(Fst, ty)) k1, labeled_singleton (Proj(Snd, ty)) k2)
   end
+
+  val product k1 k2 = DepSum(Var.fresh "?product", k1, k2)
 } : {
   val labeled_singleton : ty -> kind -> kind
+
+  // Construct a product kind.
+  // A degenerate form of dependent sum kinds.
+  val product : kind -> kind -> kind
 }

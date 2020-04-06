@@ -1,9 +1,11 @@
 module ErrorType = {
   datatype t =
     | Env
+    | Singleton
 
   val show = function
-    | Env -> "env error"
+    | Env       -> "env error"
+    | Singleton -> "singleton kind calculus error"
   end
 }
 
