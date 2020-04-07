@@ -11,14 +11,25 @@ signature S = {
   val get_natural_kind : env -> path -> OptionResult.t kind
   val normalize        : env -> ty -> result Errors.t ty
 
+  val is_valid_kind   : env -> kind -> result Errors.t unit
+
+  // Returns a principal kind.
+  val synthesize_kind : env -> ty -> result Errors.t kind
+
+  // The kind must be valid.
+  val kind_check : env -> ty -> kind -> result Errors.t unit
+
+  // The two kinds must be valid.
   val equiv_kind : env -> kind -> kind -> result Errors.t unit
+
+  // The two types must have the given kind.
   val equiv_type : env -> ty -> ty -> kind -> result Errors.t unit
+
+  // The two paths must have the given kind.
   val equiv_path : env -> path -> path -> result Errors.t kind
 
-  val is_valid_kind   : env -> kind -> result Errors.t unit
-  val is_subkind_of   : env -> kind -> kind -> result Errors.t unit
-  val synthesize_kind : env -> ty -> result Errors.t kind // Returns a principal kind.
-  val kind_check      : env -> ty -> kind -> result Errors.t unit
+  // The two kinds must be valid.
+  val is_subkind_of : env -> kind -> kind -> result Errors.t unit
 }
 
 datatype error =
