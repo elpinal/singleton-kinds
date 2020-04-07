@@ -102,11 +102,22 @@ include {
     | DepSum(v, k1, k2)  -> open Index in DepSum(v, labeled_singleton (Proj(Fst, ty)) k1, labeled_singleton (Proj(Snd, ty)) k2)
   end
 
+  val arrow k1 k2 = DepProd(Var.fresh "?arrow", k1, k2)
   val product k1 k2 = DepSum(Var.fresh "?product", k1, k2)
+
+  val int = Base $ Base.Int
+  val bool = Base $ Base.Bool
 } : {
   val labeled_singleton : ty -> kind -> kind
+
+  // Construct a arrow kind.
+  // A degenerate form of dependent product kinds.
+  val arrow : kind -> kind -> kind
 
   // Construct a product kind.
   // A degenerate form of dependent sum kinds.
   val product : kind -> kind -> kind
+
+  val int  : ty
+  val bool : ty
 }

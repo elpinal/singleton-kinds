@@ -1,3 +1,44 @@
 submodule Syntax = "syntax"
 submodule "env"
 submodule Semantics = "semantics"
+
+// test
+open {
+  open Syntax
+  open Semantics
+
+  val report = function
+    | Err e         -> print_endline $ Errors.show e
+    | Ok (_ : unit) -> ()
+  end
+
+  val env = Env.empty
+
+  val _ = report $ is_valid_kind env T
+  val _ = report $ is_valid_kind env $ S int
+  val _ = report $ is_valid_kind env $ S $ Var $ Var.fresh "a"
+  val _ = report $ is_valid_kind env $ S $ Var $ Var.fresh "b"
+
+  val v1 = Var.fresh "a"
+  val env = Env.insert env v1 $ S int
+
+  val _ = report $ kind_check env (Var v1) T
+  val _ = report $ kind_check env (Var v1) $ S int
+  val _ = report $ kind_check env (Var v1) $ S $ Var v1
+  val _ = report $ kind_check env int T
+  val _ = report $ kind_check env int $ S int
+  val _ = report $ kind_check env int $ S $ Var v1
+
+  val _ = report $ equiv_type env (Var v1) (Var v1) T
+  val _ = report $ equiv_type env (Var v1) (Var v1) $ S int
+  val _ = report $ equiv_type env (Var v1) (Var v1) $ S $ Var v1
+  val _ = report $ equiv_type env (Var v1) int T
+  val _ = report $ equiv_type env int (Var v1) T
+  val _ = report $ equiv_type env (Var v1) int $ S int
+  val _ = report $ equiv_type env (Var v1) int $ S $ Var v1
+
+  val v2 = Var.fresh "b"
+  val env = Env.insert env v2 $ arrow T $ S bool
+
+  // val _ = report $ kind_check env (Var v2) $ arrow T T
+}
