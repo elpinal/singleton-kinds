@@ -9,6 +9,21 @@ include {
       | SS.DepProd(_, k1, k2) -> Fun(erase k1, erase k2)
       | SS.DepSum(_, k1, k2)  -> Prod(erase k1, erase k2)
     end
+
+  val rec expand ty = function
+    | SS.T     -> ty
+    | SS.S ty' -> ty'
+    | SS.DepProd(v, k1, k2) ->
+        let val ty2 = expand (SS.Var v) k1 in
+        SS.Abs(v, k1, expand (SS.App(ty, ty2)) $ Singleton.Semantics.subst_kind v ty2 k2)
+    | SS.DepSum(v, k1, k2) ->
+        let val ty1 = expand (SS.Proj(SS.Index.Fst, ty)) k1 in
+        SS.Pair(ty1, expand (SS.Proj(SS.Index.Snd, ty)) $ Singleton.Semantics.subst_kind v ty1 k2)
+  end
 } : {
-  val erase : Singleton.Syntax.kind -> Syntax.kind
+  open {module SS = Singleton.Syntax}
+
+  val erase : SS.kind -> Syntax.kind
+
+  val expand : SS.ty -> SS.kind -> SS.ty
 }
