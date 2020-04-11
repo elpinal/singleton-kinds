@@ -1,5 +1,7 @@
 # singleton-kinds
 
+This repository implements the following algorithms in [Bright ML](https://github.com/elpinal/bright-ml).
+
 - An algorithm to decide type equivalence in the presence of singleton kinds [Stone and Harper 2006].
 - An algorithm to eliminate singleton kinds [Crary 2007].
 
