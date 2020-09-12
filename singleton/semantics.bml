@@ -259,6 +259,7 @@ include {
     | Var v         -> Result.map (labeled_singleton $ Var v) $ Env.lookup env v
     | Abs(v, k, ty) ->
         val+ _ : unit = is_valid_kind env k in
+        // FIXME!!!!!!!
         synthesize_kind (Env.insert env v k) ty
     | App(ty1, ty2) ->
         val+ k = synthesize_kind env ty1 in
