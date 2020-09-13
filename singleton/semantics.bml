@@ -130,6 +130,7 @@ include {
     | _ -> empty // Indicating that the given type is not a path.
   end
 
+  // FIXME: Check singletons first.
   val rec normalize env = function
     | App(x, y)  -> normalize_app env (normalize env x) y
     | Proj(i, x) -> normalize_proj env i $ normalize env x
